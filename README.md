@@ -43,7 +43,7 @@
 
 ```bash
 # 1) 装依赖
-pip install PySide6
+pip install -r requirements.txt
 
 # 2) 全屏运行（目标设备上的正式形态）
 python src/main.py

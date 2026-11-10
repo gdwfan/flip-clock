@@ -32,7 +32,8 @@ jobs:
       - name: 安装打包依赖
         run: |
           python -m pip install --upgrade pip
-          python -m pip install PySide6 pyinstaller psutil pillow
+          # requirements.txt 钉住运行期依赖；PyInstaller 也钉住（出包工具换版本会改变产物）
+          python -m pip install -r requirements.txt pyinstaller==6.22.3 psutil pillow
           # pillow：packaged_smoke 的像素断言用 PIL（漏装过一次，CI 直接挂在这）
 
       - name: 出包（onedir + 可审计瘦身）
