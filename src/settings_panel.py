@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 import brightness as brightness_mod
+import version as version_mod
 import ntp_check
 import screen_bright
 
@@ -320,7 +321,7 @@ class SettingsPanel(QWidget):
         quit_btn = QPushButton("⏻  退出应用")
         quit_btn.setObjectName("quitBtn")
         quit_btn.clicked.connect(self.quit_requested.emit)
-        ver = QLabel("v1.0.0")
+        ver = QLabel("v" + version_mod.__version__)
         ver.setObjectName("ver")
         fl.addWidget(quit_btn)
         fl.addStretch(1)

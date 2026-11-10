@@ -3,21 +3,47 @@
 按 AGENTS.md：开发/调试一律跑源码；只有用户明确要「出包/打包」时才执行本脚本。
 
 关键约束：
-- 输出目录必须是 ASCII 路径（中文路径会打乱子进程编码），故先出到 C:/scratch，
-  成功后再拷回项目 dist/。
+- 输出目录必须是 ASCII 路径（中文路径会打乱子进程编码），故先出到 ASCII 暂存区，
+  成功后再拷回项目 dist/。暂存区优先 C:/scratch（本机惯例），CI/无该目录时退回
+  RUNNER_TEMP / TEMP（GitHub runner 的临时目录同样在 ASCII 路径下）。
 - 打包前结束正在运行的旧 exe（否则新产物写不进去）。
 - 判据只看退出码：非 0 一律不信产物。
 
 跑法：py -3.10 -X utf8 build_app.py
 """
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-SCREENSHOT_SAFE = Path("C:/scratch/clock-dist")  # ASCII 暂存
+sys.path.insert(0, str(ROOT / "src"))
+from version import VERSION_4, __version__  # noqa: E402  版本号单一来源
+
 FINAL = ROOT / "dist"
+
+
+def _ascii_root() -> Path:
+    """选一个 ASCII 暂存根目录。中文路径会打乱 PyInstaller 子进程编码，必须 ASCII。"""
+    for cand in (Path("C:/scratch"), Path(os.environ.get("RUNNER_TEMP") or ""),
+                 Path(tempfile.gettempdir())):
+        if not str(cand) or not str(cand).strip():
+            continue
+        if not all(ord(c) < 128 for c in str(cand)):
+            continue
+        try:
+            cand.mkdir(parents=True, exist_ok=True)
+            return cand
+        except OSError:
+            continue
+    raise SystemExit("找不到可用的 ASCII 暂存目录（C:/scratch、RUNNER_TEMP、TEMP 都不可写）")
+
+
+ASCII_ROOT = _ascii_root()
+SCREENSHOT_SAFE = ASCII_ROOT / "clock-dist"      # 打包输出暂存
+WORK_DIR = ASCII_ROOT / "clock-build"            # PyInstaller 工作目录
 
 # 排除用不到的 Qt 模块压体积（QtNetwork 必须保留：单实例用 QLocalServer/QLocalSocket）
 EXCLUDES = [
@@ -36,6 +62,12 @@ EXCLUDES = [
 ]
 
 
+def _four_tuple() -> str:
+    """'1.1.0.0' → '(1,1,0,0)'（version file 的 ffi 元组是裸字面量，不带引号）"""
+    parts = (VERSION_4.split(".") + ["0", "0", "0", "0"])[:4]
+    return "(" + ",".join(str(int(x)) for x in parts) + ")"
+
+
 def _write_version_file(path: Path) -> Path:
     """生成 exe 版本资源（文件属性里显示的版本号/产品名）。
 
@@ -44,17 +76,17 @@ def _write_version_file(path: Path) -> Path:
     """
     path.write_text(
         "VSVersionInfo(\n"
-        "  ffi=FixedFileInfo(filevers=(1,0,0,0), prodvers=(1,0,0,0),\n"
+        "  ffi=FixedFileInfo(filevers=" + _four_tuple() + ", prodvers=" + _four_tuple() + ",\n"
         "    mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0,0)),\n"
         "  kids=[\n"
         "    StringFileInfo([StringTable('040904B0', [\n"
         "      StringStruct('CompanyName', 'FlipClock'),\n"
         "      StringStruct('FileDescription', 'FlipClock - desktop flip clock'),\n"
-        "      StringStruct('FileVersion', '1.0.0.0'),\n"
+        "      StringStruct('FileVersion', '" + VERSION_4 + "'),\n"
         "      StringStruct('InternalName', 'FlipClock'),\n"
         "      StringStruct('OriginalFilename', 'FlipClock.exe'),\n"
         "      StringStruct('ProductName', 'FlipClock'),\n"
-        "      StringStruct('ProductVersion', '1.0.0.0')])]),\n"
+        "      StringStruct('ProductVersion', '" + VERSION_4 + "')])]),\n"
         "    VarFileInfo([VarStruct('Translation', [1033, 1200])])\n"
         "  ]\n"
         ")\n",
@@ -127,9 +159,10 @@ def _slim(dist_dir: Path) -> float:
 
 
 def main():
+    print(f"BUILD FlipClock v{__version__}  (ASCII 暂存: {ASCII_ROOT})")
     if SCREENSHOT_SAFE.exists():
         shutil.rmtree(SCREENSHOT_SAFE, ignore_errors=True)
-    work = Path("C:/scratch/clock-build")
+    work = WORK_DIR
     work.mkdir(parents=True, exist_ok=True)
     vfile = _write_version_file(work / "version_info.txt")
     args = [

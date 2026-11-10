@@ -1,0 +1,63 @@
+name: Release
+
+# 打 v* tag 时自动出包并把 zip 挂到 Release（别人下载即用，无需自己装 Python）。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要发布/重建的 tag（如 v1.1.0）"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: 安装打包依赖
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install PySide6 pyinstaller psutil
+
+      - name: 出包（onedir + 可审计瘦身）
+        run: python -X utf8 build_app.py
+
+      - name: 打包态冒烟（门槛：删错 Qt 组件 / 进程残留 / 内存超预算都会在这里拦下）
+        run: python -X utf8 -I _probe/packaged_smoke.py
+
+      - name: 打成 zip
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.inputs.tag || github.ref_name }}"
+          Compress-Archive -Path dist/FlipClock -DestinationPath "FlipClock-$tag-win64.zip"
+          Get-Item "FlipClock-$tag-win64.zip" | ForEach-Object { "asset: {0} ({1:N1} MB)" -f $_.Name, ($_.Length / 1MB) }
+
+      - name: 上传到 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: FlipClock-*.zip
+          generate_release_notes: true
+          body: |
+            Windows 64 位 onedir 包（解压即用，无需安装 Python）。
+
+            1. 解压整个 `FlipClock/` 目录（**目录版必须整目录拷贝**，不能只拿 exe）
+            2. 双击 `FlipClock.exe`
+            3. 左上齿轮 → 打开「开机自启」
+
+            本包由 CI 在 `windows-latest` 上构建，并已通过打包态冒烟（渲染 / 整树无孤儿进程 / 无 `_MEI` 残留 / 内存预算 ≤100MB）。

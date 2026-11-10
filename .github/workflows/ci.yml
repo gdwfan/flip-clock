@@ -1,0 +1,56 @@
+name: CI
+
+# 只跑「不依赖真硬件/真桌面」的门禁。三套必须在真机上跑的已排除，理由写在文件末尾。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  probes:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+      PYTHONDONTWRITEBYTECODE: "1"
+    strategy:
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: 安装依赖（与运行期一致：PySide6；测试另需 psutil / pillow）
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install PySide6 psutil pillow
+
+      - name: 逻辑与配置（51 项）
+        run: python -X utf8 -I _probe/test_logic.py
+
+      - name: 几何与布局（27 项，需要真实字体引擎）
+        run: python -X utf8 -I _probe/geom_check.py
+
+      - name: 设置切换的脏区覆盖（12 项，白盒）
+        run: python -X utf8 -I _probe/toggle_check.py
+
+      - name: 焦点/防抖/线程/路径/窗口几何（15 项）
+        run: python -X utf8 -I _probe/defects_check.py
+
+      - name: 设置面板定宽下的文字裁切（14 项，需要真实字体引擎）
+        run: python -X utf8 -I _probe/panel_fit.py
+
+      - name: 亮度资源代价（6 项，单位成本 × 发生次数）
+        run: python -X utf8 -I _probe/bright_cost.py
+
+      - name: 内存老化（90 秒，红线 ≤100MB）
+        run: python -X utf8 -I _probe/mem_check.py
+
+# 不进 CI 的三套（本机必跑，CI 里必红或无法判定）：
+#   _probe/backlight_check.py  断言本机 Power API 可调背光 —— CI runner 无 ACPI 亮度接口
+#   _probe/smoke.py            含真背光场景（FLIPCLOCK_ALLOW_BRIGHT=1），无背光时该断言必红；
+#                              且它要求真实桌面渲染 + 人工过目截图
+#   _probe/bg_mode_check.py    断言「启动不抢前台焦点」——需要交互式桌面会话才有前台窗口可比

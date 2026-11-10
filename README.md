@@ -1,7 +1,12 @@
 # 翻页时钟 FlipClock
 
+[![CI](https://github.com/gdwfan/flip-clock/actions/workflows/ci.yml/badge.svg)](https://github.com/gdwfan/flip-clock/actions/workflows/ci.yml)
+![version](https://img.shields.io/badge/version-1.1.0-blue)
+
 > A minimal, single-process split-flap clock for Windows. Runs 24/7 on a low-end touch tablet.
 > 给低配 Windows 触屏平板用的全屏翻页时钟——单进程自绘、静止零 CPU、按时间自动调背光。
+
+**直接下载 Windows 包** → [Releases](https://github.com/gdwfan/flip-clock/releases)（解压即用，无需装 Python）
 
 ![主界面](docs/screenshots/main.png)
 
@@ -74,11 +79,13 @@ src/
 ├── brightness.py     自动亮度曲线（纯函数：两档 + 两段 smoothstep 过渡，可单测）
 ├── screen_bright.py  屏幕背光：ctypes 直调 powrprof Power API（零依赖，退出还原）
 ├── settings.py       配置：原子写 + .bak 轮换 + 损坏自愈
+├── version.py        版本号单一来源（面板显示 / exe 版本资源 / Release tag 同源）
 ├── time_source.py    时间格式化与秒对齐调度
 ├── ntp_check.py      网络校时：daemon 线程 + stdlib socket（NTP → HTTP Date 兜底）
 ├── debounce.py       写盘防抖（拖滑杆不产生写放大）
 └── keep_awake.py     屏幕常亮：SetThreadExecutionState
 _probe/               12 个回归脚本（188 项断言，不进发布包）
+.github/workflows/    CI（硬件无关的 7 套）+ Release（打 tag 自动出包）
 docs/screenshots/     README 用截图
 技术方案.md           设计 / 选型 / 实测数据 / 验收标准
 经验总结.md           踩坑与验证方法论（PySide6 自绘、打包、性能测量）
@@ -100,6 +107,7 @@ python _probe/mem_check.py       # 90 秒内存老化（红线 ≤100MB）
 ```
 
 `smoke.py` 会把截图落在 `_probe/shots/`——**截图必须人工过目**，逻辑断言测不出渲染类问题。
+（`backlight_check.py` / `bg_mode_check.py` / `smoke.py` 需要真实屏幕与桌面会话，CI 里不跑，见上文。）
 
 <details>
 <summary>AUTOTEST 环境变量（自动化验证用）</summary>
@@ -115,6 +123,20 @@ python _probe/mem_check.py       # 90 秒内存老化（红线 ≤100MB）
 | `FLIPCLOCK_ALLOW_BRIGHT=1` | AUTOTEST 下也允许真写系统背光（默认禁止，免得测试动了开发机） |
 | `FLIPCLOCK_DURATION=sec` | 到时自动退出 |
 </details>
+
+## 门禁在哪儿跑
+
+| 位置 | 覆盖 | 说明 |
+|---|---|---|
+| CI（GitHub Actions，每次 push/PR） | 7 套 **125 项** | 逻辑 51 · 几何 27 · 脏区 12 · 缺陷 15 · 面板 14 · 亮度代价 6（+ 内存老化） |
+| 真机（本机 / 目标设备） | 另 3 套 **63 项** | `backlight_check`（需真 ACPI 背光）· `smoke`（含真背光场景 + 需人工过目截图）· `bg_mode_check`（需交互式桌面会话判定前台窗口） |
+
+CI 里跑不了的三套不是"跳过"，是**判定条件依赖真实硬件/桌面**——在 runner 上必红或无法判定，理由写在 `.github/workflows/ci.yml` 末尾。
+
+## 版本
+
+版本号单一来源：`src/version.py`（面板底部显示 + exe 文件属性版本资源 + Release tag 三处同源）。
+发版流程：改 `src/version.py` → 跑门禁 → `git tag vX.Y.Z && git push --tags` → CI 自动出包并挂到 Release。
 
 ## 已知限制
 
