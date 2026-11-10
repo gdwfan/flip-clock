@@ -1,0 +1,10 @@
+# 行尾统一（避免「编辑器把整份文件转 CRLF」造成的伪 diff）
+* text=auto eol=lf
+
+# Windows 批处理必须 CRLF，否则 cmd 解析异常
+*.bat text eol=crlf
+
+# 二进制
+*.png binary
+*.ico binary
+*.jpg binary
