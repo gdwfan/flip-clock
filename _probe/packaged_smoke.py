@@ -19,6 +19,20 @@ PASS = 0
 FAIL = 0
 
 
+def win_work_area():
+    """屏幕工作区（物理像素，已扣任务栏）。无第三方依赖，直接问 Windows。"""
+    import ctypes
+    from ctypes import wintypes
+
+    class RECT(ctypes.Structure):
+        _fields_ = [("left", wintypes.LONG), ("top", wintypes.LONG),
+                    ("right", wintypes.LONG), ("bottom", wintypes.LONG)]
+
+    r = RECT()
+    ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(r), 0)  # SPI_GETWORKAREA
+    return r.right - r.left, r.bottom - r.top
+
+
 def check(name, cond, detail=""):
     global PASS, FAIL
     if cond:
@@ -105,7 +119,14 @@ def main():
         from PIL import Image
         im = Image.open(png).convert("L")
         w, h = im.size
-        check("screenshot size sane", w >= 1280 and h >= 800, f"{w}x{h}")
+        # 基准是 1280x800，但**不能假设屏幕装得下**：桌面更小时 AUTOTEST 窗口会被钳住
+        # （GitHub runner 桌面 1024x768 → 实测窗口 1028x749）。按屏幕工作区取 min，
+        # 窄屏机器不再假失败。（CI 首次运行就抓到这一类假设）
+        work_w, work_h = win_work_area()
+        exp_w, exp_h = min(1600, work_w), min(1000, work_h)
+        check("screenshot size sane",
+              w >= exp_w * 0.98 and h >= exp_h * 0.98,
+              f"{w}x{h}（期望 ≥ {exp_w}x{exp_h}；屏幕工作区 {work_w}x{work_h}）")
         px = list(im.crop((0, int(h * 0.3), w, int(h * 0.7))).getdata())
         bright = sum(1 for v in px if v > 180)     # 数字笔画
         mid = sum(1 for v in px if 25 < v < 70)    # 卡片底

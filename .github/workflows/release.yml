@@ -32,12 +32,15 @@ jobs:
       - name: 安装打包依赖
         run: |
           python -m pip install --upgrade pip
-          python -m pip install PySide6 pyinstaller psutil
+          python -m pip install PySide6 pyinstaller psutil pillow
+          # pillow：packaged_smoke 的像素断言用 PIL（漏装过一次，CI 直接挂在这）
 
       - name: 出包（onedir + 可审计瘦身）
         run: python -X utf8 build_app.py
 
       - name: 打包态冒烟（门槛：删错 Qt 组件 / 进程残留 / 内存超预算都会在这里拦下）
+        # 截图尺寸断言按 runner 屏幕工作区自适应（1024x768 的 runner 上不会假红）；
+        # 其余门槛（启动退出码 / 渲染像素 / 无孤儿进程 / 无 _MEI 残留 / 内存预算）与分辨率无关
         run: python -X utf8 -I _probe/packaged_smoke.py
 
       - name: 打成 zip

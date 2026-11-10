@@ -122,9 +122,25 @@ def sys_bright():
         return None
 
 
+def screen_px():
+    """主屏物理像素尺寸（不引 Qt，直接问 Windows）。"""
+    import ctypes
+    u = ctypes.windll.user32
+    return u.GetSystemMetrics(0), u.GetSystemMetrics(1)
+
+
 def main():
     global PASS, FAIL
     from PIL import Image
+
+    # 前置条件：整套像素断言以「AUTOTEST 窗口 1280x800」为基准（k = 宽/1280）。
+    # 屏幕比它小 → 窗口被钳住 → k 失真 → 断言全乱。此时明确 SKIP（退出码 2），
+    # 而不是抛一堆假红让人以为渲染坏了。
+    sw, sh = screen_px()
+    if sw < 1280 or sh < 800:
+        print(f"SMOKE SKIP: 主屏 {sw}x{sh} 小于基准 1280x800，像素断言不成立；"
+              f"请在 ≥1280x800 的机器上跑（本探针不进 CI）")
+        return 2
 
     sys_before = sys_bright()
     # 场景截图
