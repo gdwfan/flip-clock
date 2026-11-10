@@ -58,6 +58,20 @@ def main():
 
     fg_before = ctypes.windll.user32.GetForegroundWindow()
     main_mod._start_window(win, True)
+    # 预览模式不许动系统背光：把 set/restore 换成假实现，断言一次都没被调用
+    import screen_bright as sb
+    writes = []
+    orig_set, orig_restore = sb.set, sb.restore
+    sb.set = lambda level: writes.append(level) or True
+    sb.restore = lambda: writes.append("restore") or True
+    try:
+        win.use_preview_overlay()
+        app.processEvents()
+    finally:
+        sb.set, sb.restore = orig_set, orig_restore
+    check("预览模式不动系统背光", writes == [] and win._bright_impl == "overlay",
+          f"writes={writes} impl={win._bright_impl}")
+
     app.processEvents()
 
     hwnd = int(win.winId())

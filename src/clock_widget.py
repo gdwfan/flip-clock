@@ -225,6 +225,19 @@ class ClockWidget(QWidget):
         self._refresh_brightness(force=True)  # 亮度档位/方式改了要立刻落到位
         self._tick()
 
+    def use_preview_overlay(self):
+        """预览模式（--bg）：亮度只用画面叠加，**绝不改系统背光**。
+
+        开发者在同一台机器上边干活边看效果时，把整块屏的背光降下来是本末倒置
+        —— `--bg` 的全部意义就是「不打扰用户」。已写过的背光会被还原。
+        全屏形态（平板上的正式用法）不受影响，仍是真背光。
+        """
+        if self._bright_impl == "backlight":
+            screen_bright.restore()          # 若构造期已写过，先还给用户
+        self._bright_impl = "overlay"
+        self._bright_applied = False
+        self._refresh_brightness(force=True)
+
     def prepare_windowed(self):
         """从全屏切回窗口时给一个合理尺寸并居中（只生效一次）。
 

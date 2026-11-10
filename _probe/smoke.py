@@ -244,18 +244,29 @@ def main():
           peak_colon_blink >= peak_digit - 4 or peak_colon_blink <= 40,
           f"colon={peak_colon_blink} digit={peak_digit}")
 
-    def glyph_span(png, x0f, x1f):
-        """区域扫描：返回亮像素（数字笔画）的竖直跨度。"""
+    def glyph_span(png):
+        """全宽列扫描，返回**最高的那一列**里亮像素（数字笔画）的竖直跨度。
+
+        为什么不能固定一条竖带：数字内容随墙钟变，固定 26%~31% 那条带偶尔正好落在
+        某个字形的空白侧（如「1」的右侧留白）→ 跨度塌成一小截，断言假红
+        （2026-11-11 实测 nos·sec 场景量到 116px，而真实数字高 429px）。
+        每列各自求跨度再取最大，就与"这一刻显示的是哪几个数字"无关。
+        """
         im2 = Image.open(png).convert("L")
         ww, hh = im2.size
         pxx = im2.load()
-        ys = [y for y in range(hh)
-              for x in range(int(ww * x0f), int(ww * x1f), 2) if pxx[x, y] > 180]
-        return (max(ys) - min(ys)) if ys else 0
+        best = 0
+        for x in range(0, ww, 3):
+            ys = [y for y in range(hh) if pxx[x, y] > 180]
+            if ys:
+                span = max(ys) - min(ys)
+                if span > best:
+                    best = span
+        return best
 
-    span_big = glyph_span(results["default"], 0.26, 0.31)
-    span_off = glyph_span(results["nosec"], 0.26, 0.31)
-    span_small = glyph_span(results["secsmall"], 0.26, 0.31)
+    span_big = glyph_span(results["default"])
+    span_off = glyph_span(results["nosec"])
+    span_small = glyph_span(results["secsmall"])
     check("no-seconds digits are much taller", span_off > span_big * 1.25,
           f"big={span_big} off={span_off} (+{span_off / max(1, span_big) * 100 - 100:.0f}%)")
     check("small-seconds digits taller than big", span_small > span_big * 1.02,

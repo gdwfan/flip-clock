@@ -3,7 +3,8 @@
 组装：QApplication / 单实例锁 + 激活已有实例 / 全屏窗口 / 设置面板 / 常亮 / NTP / 日志重定向。
 
 命令行：
-  --bg, --background   后台模式：窗口化且**不抢前台焦点、不压到别的窗口上面**（开发期边干活边看效果用）
+  --bg, --background   后台模式：窗口化且**不抢前台焦点、不压到别的窗口上面**（开发期边干活边看效果用）；
+                       亮度只用画面叠加，**不改系统背光**（预览不该动开发者的屏幕）
                        不拦息屏、保持窗口化；点它/Alt-Tab 时仍能正常切到前台
 
 AUTOTEST 钩子（冒烟用，全部环境变量）：
@@ -283,6 +284,9 @@ def main():
         if DURATION > 0:
             QTimer.singleShot(int(DURATION * 1000), app.quit)
     else:
+        if BG:
+            # 预览模式不动系统背光（见 ClockWidget.use_preview_overlay 的说明）
+            win.use_preview_overlay()
         _start_window(win, BG)
         if not cfg.get("first_run_done", False):
             win.show_toast(4.2)
