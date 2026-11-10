@@ -1,15 +1,11 @@
 name: CI
 
-# 只跑「不依赖真硬件」的门禁；三套必须在真机上跑的写在文件末尾。
-# 【临时诊断模式】当前版本会把每个探针的完整输出推到 ci-log 分支，便于在无凭证环境下定位云端失败。
+# 只跑「不依赖真硬件、且不吃分辨率」的门禁。三套必须在真机上跑的写在文件末尾。
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
-
-permissions:
-  contents: write   # 仅诊断期需要（推 ci-log 分支）
 
 jobs:
   probes:
@@ -25,59 +21,34 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: 安装依赖
+      - name: 安装依赖（运行期只要 PySide6；测试另需 psutil / pillow）
         run: |
           python -m pip install --upgrade pip
           python -m pip install PySide6 psutil pillow
 
-      - name: 环境自述（排查用）
-        shell: pwsh
-        run: |
-          python -X utf8 -c "import sys, PySide6; print('python', sys.version); print('PySide6', PySide6.__version__)"
-          Get-CimInstance Win32_VideoController | Select-Object -First 1 Name, CurrentHorizontalResolution, CurrentVerticalResolution
-          Add-Type -AssemblyName System.Windows.Forms
-          [System.Windows.Forms.Screen]::AllScreens | ForEach-Object { "screen: $($_.Bounds)" }
-          python -X utf8 -c "import PySide6.QtGui as g; from PySide6.QtWidgets import QApplication; a=QApplication([]); print('platform:', a.platformName()); print('screen:', a.primaryScreen().geometry(), 'dpr:', a.primaryScreen().devicePixelRatio()); print('ArialBlack:', g.QFontInfo(g.QFont('Arial Black')).family())"
+      - name: 逻辑与配置（51 项）
+        run: python -X utf8 -I _probe/test_logic.py
 
-      - name: 逐个跑探针并收集输出
-        id: all
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $probes = @(
-            @{n='test_logic';   f='_probe/test_logic.py'},
-            @{n='geom_check';   f='_probe/geom_check.py'},
-            @{n='toggle_check'; f='_probe/toggle_check.py'},
-            @{n='defects';      f='_probe/defects_check.py'},
-            @{n='panel_fit';    f='_probe/panel_fit.py'},
-            @{n='bright_cost';  f='_probe/bright_cost.py'},
-            @{n='mem_check';    f='_probe/mem_check.py'}
-          )
-          $log = New-Object System.Collections.Generic.List[string]
-          $fail = 0
-          foreach ($p in $probes) {
-            $out  = & python -X utf8 -I $p.f 2>&1 | Out-String
-            $code = $LASTEXITCODE
-            $log.Add("===== $($p.n)  exit=$code =====")
-            $log.Add($out.TrimEnd())
-            if ($code -ne 0) { $fail++ }
-          }
-          $log.Add("===== failed_probes=$fail =====")
-          $log -join "`n" | Set-Content -Path ci-probe-log.txt -Encoding utf8
-          if ($fail -gt 0) { exit 1 }
+      - name: 几何与布局（27 项）
+        run: python -X utf8 -I _probe/geom_check.py
 
-      - name: 失败时把日志推到 ci-log 分支（诊断期专用）
-        if: steps.all.outcome != 'success'
-        shell: pwsh
-        run: |
-          git config user.name ci-bot
-          git config user.email ci-bot@users.noreply.github.com
-          git checkout --orphan ci-log
-          git add -f ci-probe-log.txt
-          git commit -m "ci probe log ($env:GITHUB_SHA)"
-          git push -f origin ci-log
+      - name: 设置切换的脏区覆盖（12 项，白盒）
+        run: python -X utf8 -I _probe/toggle_check.py
 
-# 不进 CI 的三套（本机必跑，CI 里必红或无法判定）：
+      - name: 焦点/防抖/线程/路径/窗口几何（15 项）
+        run: python -X utf8 -I _probe/defects_check.py
+
+      - name: 设置面板定宽下的文字裁切（14 项）
+        run: python -X utf8 -I _probe/panel_fit.py
+
+      - name: 亮度资源代价（6 项，单位成本 × 发生次数）
+        run: python -X utf8 -I _probe/bright_cost.py
+
+      - name: 内存老化（90 秒，红线 ≤100MB）
+        run: python -X utf8 -I _probe/mem_check.py
+
+# 不进 CI 的三套（本机必跑；CI 里必红或无法判定）：
 #   _probe/backlight_check.py  断言本机 Power API 可调背光 —— CI runner 无 ACPI 亮度接口
-#   _probe/smoke.py            含真背光场景（FLIPCLOCK_ALLOW_BRIGHT=1），无背光时该断言必红
+#   _probe/smoke.py            含真背光场景（FLIPCLOCK_ALLOW_BRIGHT=1），无背光时该断言必红；
+#                              且它按 1280x800 做像素断言，比屏幕还大时无法跑
 #   _probe/bg_mode_check.py    断言「启动不抢前台焦点」——需要交互式桌面会话才有前台窗口可比

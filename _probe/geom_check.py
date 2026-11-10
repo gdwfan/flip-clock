@@ -38,14 +38,21 @@ def check(name, cond, detail=""):
 app = QApplication(sys.argv)
 cfg = settings_mod.load()
 win = ClockWidget(cfg, lambda: {"status": "init", "offset_s": None})
-win.resize(1280, 800)
+
+# 基准尺寸 1280x800，但**不能假设屏幕装得下**：桌面比它小时窗口会被钳住
+# （CI runner 是 1024x768 → 实测被钳成 1028x749）。下面所有断言都从实际 W/H 推导，
+# 只有这一条尺寸断言，所以按可用区取 min 即可，窄屏机器不再假失败。
+scr = app.primaryScreen().availableGeometry()
+want_w, want_h = min(1280, scr.width()), min(800, scr.height())
+win.resize(want_w, want_h)
 win.show()
 app.processEvents()
 win._relayout()
 
 W = win.width()
-print(f"logical size={W}x{win.height()} dpr={win.devicePixelRatioF()}")
-check("logical width is 1280", W == 1280, f"got {W}")
+print(f"screen={scr.width()}x{scr.height()} want={want_w}x{want_h} "
+      f"logical size={W}x{win.height()} dpr={win.devicePixelRatioF()}")
+check(f"logical width is {want_w}", W == want_w, f"got {W}（屏 {scr.width()}x{scr.height()}）")
 
 rects = win._rects
 print("card rects:")
@@ -166,7 +173,7 @@ check("small mode matches formula", abs(win._card_h - h_small) < 0.1,
 # 必须真渲染一帧再扫描亮像素范围。grab() 会强制整窗重绘，这里正合适。
 from PySide6.QtGui import qGray  # noqa: E402
 
-win.resize(1280, 800)
+win.resize(want_w, want_h)
 cfg_secs = dict(cfg)
 cfg_secs["seconds_mode"] = "big"    # 前面的用例把秒关了，恢复 6 张卡
 cfg_secs["flip_anim"] = False      # 关动画：要测静态落位，动画中间帧会混入旧数字
