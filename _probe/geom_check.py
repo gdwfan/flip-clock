@@ -91,7 +91,7 @@ check("card h matches constants", abs(win._card_h - expect_h) < 0.1, f"{win._car
 
 # 字形必须放得进卡片：宽体字靠横向压缩达成「窄卡大字」
 font = cw._clock_font(win._card_h)
-from PySide6.QtGui import QFontMetrics  # noqa: E402
+from PySide6.QtGui import QFont, QFontMetrics  # noqa: E402
 fm = QFontMetrics(font)
 card_w = win._card_h * cw.CARD_W_RATIO
 widest_nat = max(fm.horizontalAdvance(ch) for ch in "0123456789")
@@ -104,12 +104,22 @@ cap = fm.capHeight()
 check("glyph height fills card", cap > win._card_h * 0.6,
       f"cap={cap} card_h={win._card_h:.1f} ({cap/win._card_h*100:.0f}%)")
 
-# 纵向上限：时钟行 + 日期行必须放得进屏高（用户要"再高些"，得确认没顶出屏）
-date_gap = win._card_h * cw.DATE_GAP_RATIO
-date_h = cw._date_px(win.width()) * 1.6
-group_h = win._card_h + date_gap + date_h
+# 纵向上限：时钟行 + 日期行必须放得进屏高（用户要"再高些"，得确认没顶出屏）。
+# 直接读布局产物 _date_rect（单一事实源），不复述字号推导公式，防两处口径漂移。
+date_h = win._date_rect.height()
+group_h = win._card_h + win._card_h * cw.DATE_GAP_RATIO + date_h
 check("clock+date fit vertically", group_h < win.height() * 0.92,
       f"group={group_h:.1f} screen_h={win.height()} ({group_h/win.height()*100:.0f}%)")
+
+# 日期行横向顶满（用户 2026-11-11：按横向宽度做到最大）：最宽日期串在生效字号下的
+# 渲染宽度必须贴着 屏宽×DATE_FIT（容差 3%，吸收迭代取整的残余误差）。
+fnt = QFont("Segoe UI")
+fnt.setWeight(QFont.Weight.Medium)
+fnt.setPixelSize(int(date_h / 1.6))
+fnt.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, W * 0.006)
+date_adv = QFontMetrics(fnt).horizontalAdvance(cw._DATE_PROBE)
+check("date row fills width", abs(date_adv - W * cw.DATE_FIT) < W * cw.DATE_FIT * 0.03,
+      f"adv={date_adv:.0f} target={W * cw.DATE_FIT:.0f} px={date_h / 1.6:.0f}")
 
 # 元素顺序：冒号必须落在「时|分」与「分|秒」的边界上。
 # 只验总宽/居中会漏掉「冒号插进小时内部」这类错位（2026-11-08 真实踩过）。

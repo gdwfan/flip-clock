@@ -288,7 +288,7 @@ class SettingsPanel(QWidget):
 
         # 夜间档（自动模式）/ 固定亮度（手动模式）
         self._night_row, self._slider, self._pct = self._bright_row(
-            "夜间亮度", "卧室建议 40% 以下", "brightness")
+            "夜间亮度", "卧室建议 40% 以下；0 = 全黑", "brightness")
         lay.addWidget(self._night_row)
         self._sync_bright_rows()
 
@@ -345,7 +345,8 @@ class SettingsPanel(QWidget):
         bl.setContentsMargins(0, 0, 0, 0)
         bl.setSpacing(8)
         slider = QSlider(Qt.Horizontal)
-        slider.setRange(30, 100)
+        # 区间直接读 brightness 的常量（单一事实源）：0 = 全黑，用户要的「调到最低」
+        slider.setRange(brightness_mod.BRIGHT_MIN, brightness_mod.BRIGHT_MAX)
         slider.setValue(int(self._cfg.get(key, 100)))
         # 固定宽度：滑杆默认 sizeHint 会随内容挤压变化，把面板内容宽度顶出 340
         # → 行内文字被静默裁切（2026-11-10 _probe/panel_fit.py 量到）

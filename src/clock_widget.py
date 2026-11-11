@@ -62,8 +62,8 @@ GAP_RATIO = 0.03       # 卡间距/卡高（压紧，翻页钟本就该密排）
 GLYPH_SIZE_RATIO = 1.20  # 字号/卡高（字形高度约占卡高 86%）
 GLYPH_FILL = 0.96      # 数字宽度占卡宽的目标比例（配合横向压缩实现"窄卡大字"）
 FONT_STACK = ("Arial Black", "Arial", "Segoe UI")  # 用户 2026-11-08 选定
-DATE_VW = 0.032        # 日期字号 = 屏宽 ×此值
-DATE_PX_MIN, DATE_PX_MAX = 16.0, 42.0
+DATE_FIT = 0.92        # 日期行文字横向顶满屏宽的比例（用户 2026-11-11：按横向宽度做到最大）
+DATE_PX_MIN = 16.0     # 极端窄窗下限
 DATE_GAP_RATIO = 0.22  # 日期行与时钟行的间距/卡高
 
 # 秒显示三档（用户 2026-11-08 要求「关秒」和「秒小一号」都要）：
@@ -93,9 +93,36 @@ def _clock_font(card_h: float) -> QFont:
     return f
 
 
+# 最宽日期串：四位年 + 双位月/日 + 三字符星期。字号按它定（而非当天文本），
+# 字号才不随日期每天轻跳——最宽那天恰好顶满，其余略短。
+_DATE_PROBE = format_date(datetime(2000, 12, 30))
+_date_px_cache: dict[int, float] = {}
+
+
 def _date_px(width: float) -> float:
-    """日期字号：屏宽派生（_relayout 与 _draw_date 共用，防两处口径漂移）。"""
-    return min(DATE_PX_MAX, max(DATE_PX_MIN, width * DATE_VW))
+    """日期字号：最宽日期串横向顶满 width × DATE_FIT（结果按屏宽缓存）。
+
+    迭代收敛而不一次线性外推：字距是绝对像素（随屏宽、不随字号缩放），
+    直接外推会带上约 8% 的误差；迭代 3 轮收敛到亚像素。
+    """
+    key = int(width)
+    hit = _date_px_cache.get(key)
+    if hit is not None:
+        return hit
+    target = width * DATE_FIT
+    font = QFont("Segoe UI")
+    font.setWeight(QFont.Weight.Medium)  # 与 _draw_date 同字重，度量才同口径
+    font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, width * 0.006)
+    px = width * 0.06  # 首猜（旧比例量级附近，收敛快）
+    for _ in range(3):
+        font.setPixelSize(max(1, int(round(px))))
+        adv = QFontMetrics(font).horizontalAdvance(_DATE_PROBE)
+        if adv <= 1:
+            break
+        px *= target / adv
+    px = max(DATE_PX_MIN, px)
+    _date_px_cache[key] = px
+    return px
 
 
 class _Card:
@@ -316,8 +343,9 @@ class ClockWidget(QWidget):
         self._colon_rects.clear()
         # 垂直：时钟行 + 可选日期行整体居中；秒卡（若小一号）与时钟行中线对齐
         show_date = self._cfg.get("show_date", True)
-        date_px = _date_px(w)
         date_gap = card_h * DATE_GAP_RATIO
+        # 横向顶满（_date_px）再套纵向护栏：矮扁窗不许日期行把时钟顶出屏
+        date_px = min(_date_px(w), max(DATE_PX_MIN, (h - card_h - date_gap) / 1.6))
         date_h = date_px * 1.6
         group_h = card_h + (date_gap + date_h if show_date else 0)
         y0 = (h - group_h) / 2.0
@@ -732,7 +760,9 @@ class ClockWidget(QWidget):
                        Qt.AlignHCenter, ch)
 
     def _draw_date(self, p):
-        px = _date_px(self.width())
+        # 字号口径以 _date_rect 为单一事实源（_relayout 已做横向顶满 + 纵向护栏），
+        # 此处不再重算，防两处口径漂移
+        px = max(DATE_PX_MIN, self._date_rect.height() / 1.6)
         font = QFont("Segoe UI")
         font.setPixelSize(int(px))
         font.setWeight(QFont.Weight.Medium)  # 比常规略粗，远看更清楚

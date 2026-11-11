@@ -82,13 +82,16 @@ def test_settings():
         check("written back is json", True)
     except ValueError:
         check("written back is json", False)
-    # 亮度 clamp
+    # 亮度 clamp（下限 2026-11-11 放开到 0：低值合法保留，负数才抬回 0）
     data["brightness"] = 999
     settings.save(data)
     check("brightness clamp high", settings.load()["brightness"] == 100)
     data["brightness"] = 5
     settings.save(data)
-    check("brightness clamp low", settings.load()["brightness"] == 30)
+    check("brightness low value kept", settings.load()["brightness"] == 5)
+    data["brightness"] = -3
+    settings.save(data)
+    check("brightness clamp low", settings.load()["brightness"] == 0)
 
 
 def test_brightness():
@@ -125,6 +128,12 @@ def test_brightness():
     check("garbage type", brightness_mod.current_level(
         {"auto_bright": True, "bright_day": None, "brightness": "x"},
         datetime(2026, 1, 1, 12)) == 100)
+    # 下限放到 0（用户 2026-11-11：白天/夜间都要能「调到最低」，0 = 全黑）
+    check("min bound is 0", brightness_mod.BRIGHT_MIN == 0, brightness_mod.BRIGHT_MIN)
+    check("zero level allowed", brightness_mod.current_level(
+        {"auto_bright": False, "brightness": 0}, datetime(2026, 1, 1, 12)) == 0)
+    check("negative clamps to 0", brightness_mod.current_level(
+        {"auto_bright": False, "brightness": -5}, datetime(2026, 1, 1, 12)) == 0)
     # 落地方式：只有「能调背光且没被强制压暗」才用真背光
     check("impl auto+ok", brightness_mod.resolve_impl({}, True) == "backlight")
     check("impl auto+no", brightness_mod.resolve_impl({}, False) == "overlay")

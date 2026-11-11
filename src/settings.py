@@ -9,6 +9,8 @@ import tempfile
 import time
 from pathlib import Path
 
+import brightness as brightness_mod  # 亮度上下限单一事实源（BRIGHT_MIN/MAX）
+
 APP_NAME = "FlipClock"
 
 if os.environ.get("FLIPCLOCK_AUTOTEST") == "1":
@@ -27,8 +29,8 @@ DEFAULTS = {
     "show_date": True,
     "flip_anim": True,      # 翻页动画（可在设置关闭省电）
     "auto_bright": True,    # 自动亮度：白天亮、夜间暗，按时间平滑过渡
-    "brightness": 100,      # 夜间亮度（自动模式）/ 屏幕亮度（手动模式）30-100
-    "bright_day": 100,      # 白天亮度 30-100
+    "brightness": 100,      # 夜间亮度（自动模式）/ 屏幕亮度（手动模式）0-100（0=全黑）
+    "bright_day": 100,      # 白天亮度 0-100
     "bright_impl": "auto",  # 亮度落地方式：auto 优先真背光 / backlight 强制 / overlay 画面压暗
     "keep_awake": True,     # 屏幕常亮
     "ntp_check": True,      # 每日 NTP 偏差校验（2026-11-08 拍板保留）
@@ -58,13 +60,15 @@ def load():
         except Exception:
             data = dict(DEFAULTS)
         save(data)  # 恢复值（或全新默认）立刻写回正式文件——只返回不落盘等于没恢复
-    # 数值归一
+    # 数值归一（上下限直读 brightness 常量，单一事实源；下限 0 = 全黑，2026-11-11 放开）
     try:
-        data["brightness"] = min(100, max(30, int(data.get("brightness", 100))))
+        data["brightness"] = min(brightness_mod.BRIGHT_MAX,
+                                 max(brightness_mod.BRIGHT_MIN, int(data.get("brightness", 100))))
     except (TypeError, ValueError):
         data["brightness"] = 100
     try:
-        data["bright_day"] = min(100, max(30, int(data.get("bright_day", 100))))
+        data["bright_day"] = min(brightness_mod.BRIGHT_MAX,
+                                 max(brightness_mod.BRIGHT_MIN, int(data.get("bright_day", 100))))
     except (TypeError, ValueError):
         data["bright_day"] = 100
     data["auto_bright"] = bool(data.get("auto_bright", True))

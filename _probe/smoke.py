@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "_probe" / "shots"
 OUT.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(ROOT / "src"))
-import clock_widget as cw  # noqa: E402  只读布局常量，用于推导期望值（不创建 QApplication）
+import clock_widget as cw  # noqa: E402  只读布局常量，用于推导期望值（本进程不创建 QApplication）
 
 # 防 stale pyc：同秒改写且字符数不变时，Python 的 (mtime, size) 校验会误判
 # 缓存有效，导致验证跑的是上一版字节码（假绿/假红）。
@@ -175,6 +175,18 @@ def main():
         sys.exit(1)
 
     # ---- 像素断言（截图是物理像素：125% 缩放 → 逻辑 1280x800 得 1600x1000）----
+    # 日期字号必须与程序本体同口径：_date_px 依赖真实平台字体度量（offscreen
+    # 拿不到真字体，实测 1280 下差 35%）→ 单起一个**真平台**子进程算好读回
+    # （只建 QApplication 不建窗，不抢前台焦点；本进程保持无 Qt）。
+    r = subprocess.run(
+        [sys.executable, "-X", "utf8", "-c",
+         "import sys; sys.path.insert(0, 'src');"
+         "from PySide6.QtWidgets import QApplication;"
+         "app = QApplication([]);"
+         "import clock_widget as cw; print(f'{cw._date_px(1280):.3f}')"],
+        cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+    DATE_PX_1280 = float(r.stdout.strip())
     im = Image.open(results["default"])
     w, h = im.size
     k = w / 1280.0  # 逻辑→物理缩放系数
@@ -220,7 +232,8 @@ def main():
         ch, band, cwd, colw, gp = layout_of(1280, 800, mode)
         x_start = (1280 - band) / 2
         cx = x_start + 2 * (cwd + gp) + colw / 2
-        dpx = min(42.0, max(16.0, 1280 * cw.DATE_VW))
+        dpx = min(DATE_PX_1280,
+                  max(cw.DATE_PX_MIN, (800 - ch - ch * cw.DATE_GAP_RATIO) / 1.6))
         grp = ch + ch * cw.DATE_GAP_RATIO + dpx * 1.6
         y_top = (800 - grp) / 2
         return cx, y_top, ch
